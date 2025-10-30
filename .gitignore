@@ -34,6 +34,10 @@ env/
 *~
 .DS_Store
 
+# Claude Code local settings
+.claude/settings.local.json
+*/.claude/settings.local.json
+
 # Environment variables
 .env
 .env.local
