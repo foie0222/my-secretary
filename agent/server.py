@@ -90,8 +90,8 @@ def generate_ai_response(user_message: str) -> str:
         AIが生成した応答
     """
     try:
-        # Claude Sonnet 4.5を使用
-        model_id = "anthropic.claude-sonnet-4-5-20250929-v1:0"
+        # Claude Sonnet 4.5を使用（Global Inference Profile）
+        model_id = "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
 
         # システムプロンプト
         system_prompt = """あなたはLINE秘書アシスタントです。
