@@ -8,6 +8,7 @@ AWS CDKを使ってインフラストラクチャをデプロイする
 import aws_cdk as cdk
 
 from stacks.agentcore_stack import AgentCoreStack
+from stacks.github_oidc_stack import GitHubOIDCStack
 from stacks.lambda_stack import LambdaStack
 from stacks.line_webhook_stack import LineWebhookStack
 from stacks.secrets_stack import SecretsStack
@@ -26,6 +27,17 @@ secrets_stack = SecretsStack(
     "LineAgentSecretsStack",
     env=env,
     description="Secrets Manager for LINE authentication credentials",
+)
+
+# GitHub OIDCスタック（GitHub ActionsからECRへのデプロイ）
+github_oidc_stack = GitHubOIDCStack(
+    app,
+    "LineAgentGitHubOIDCStack",
+    github_owner="foie0222",
+    github_repo="my-secretary",
+    ecr_repository_name="line-agent-secretary",
+    env=env,
+    description="GitHub OIDC provider and IAM role for GitHub Actions",
 )
 
 # Lambda関数スタック（Google Calendar操作）

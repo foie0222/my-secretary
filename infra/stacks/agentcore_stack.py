@@ -99,6 +99,18 @@ class AgentCoreStack(Stack):
             )
         )
 
+        # Bedrock Runtimeへのアクセス権限（Claude 3.5 Sonnetなどのモデルを呼び出すため）
+        runtime_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "bedrock:InvokeModel",
+                    "bedrock:InvokeModelWithResponseStream",
+                ],
+                resources=["*"],  # 本番環境では特定のモデルARNに制限することを推奨
+            )
+        )
+
         # AgentCore Gateway作成
         gateway = bedrockagentcore.CfnGateway(
             self,
