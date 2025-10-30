@@ -1,0 +1,6 @@
+{
+  "operation": "list",
+  "parameters": {
+    "max_results": 5
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/inoue_d/develop/git/my-secretary/**)",
+      "Read(//Users/inoue_d/.config/**)",
+      "Read(//Users/inoue_d/Library/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
