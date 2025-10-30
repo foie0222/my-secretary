@@ -12,11 +12,14 @@ RUN apt-get update && apt-get install -y \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy all agent files to /app/agent/
-COPY . /app/agent/
+# Copy requirements first for better caching
+COPY requirements.txt /app/
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r /app/agent/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+# Copy all agent files
+COPY . /app/agent/
 
 # Expose port 8080 (required by AgentCore Runtime)
 EXPOSE 8080

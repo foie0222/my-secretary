@@ -113,15 +113,9 @@ async def list_calendar_events(
         }
 
 
-@requires_access_token(
-    provider_name="google-calendar-provider",
-    scopes=SCOPES,
-    auth_flow="USER_FEDERATION",
-    force_authentication=False,
-)
 async def create_calendar_event(
     *,
-    access_token: str,
+    user_id: str = "default-user",
     summary: str,
     start_time: str,
     end_time: str,
@@ -132,7 +126,7 @@ async def create_calendar_event(
     カレンダーに予定を作成する
 
     Args:
-        access_token: Google OAuth2アクセストークン（AgentCore Identityから自動注入）
+        user_id: ユーザー識別子（LINEユーザーIDなど）
         summary: 予定のタイトル
         start_time: 開始日時（ISO 8601形式）
         end_time: 終了日時（ISO 8601形式）
@@ -143,6 +137,9 @@ async def create_calendar_event(
         作成された予定の情報
     """
     try:
+        # AgentCore Identityから Google OAuth トークンを取得
+        access_token = await get_google_access_token(user_id)
+
         # 認証情報を構築
         creds = Credentials(token=access_token, scopes=SCOPES)
 
@@ -179,15 +176,9 @@ async def create_calendar_event(
         }
 
 
-@requires_access_token(
-    provider_name="google-calendar-provider",
-    scopes=SCOPES,
-    auth_flow="USER_FEDERATION",
-    force_authentication=False,
-)
 async def update_calendar_event(
     *,
-    access_token: str,
+    user_id: str = "default-user",
     event_id: str,
     summary: str | None = None,
     start_time: str | None = None,
@@ -199,7 +190,7 @@ async def update_calendar_event(
     カレンダーの予定を更新する
 
     Args:
-        access_token: Google OAuth2アクセストークン（AgentCore Identityから自動注入）
+        user_id: ユーザー識別子（LINEユーザーIDなど）
         event_id: 更新する予定のID
         summary: 予定のタイトル（オプション）
         start_time: 開始日時（ISO 8601形式、オプション）
@@ -211,6 +202,9 @@ async def update_calendar_event(
         更新された予定の情報
     """
     try:
+        # AgentCore Identityから Google OAuth トークンを取得
+        access_token = await get_google_access_token(user_id)
+
         # 認証情報を構築
         creds = Credentials(token=access_token, scopes=SCOPES)
 
@@ -251,28 +245,25 @@ async def update_calendar_event(
         }
 
 
-@requires_access_token(
-    provider_name="google-calendar-provider",
-    scopes=SCOPES,
-    auth_flow="USER_FEDERATION",
-    force_authentication=False,
-)
 async def delete_calendar_event(
     *,
-    access_token: str,
+    user_id: str = "default-user",
     event_id: str,
 ) -> dict[str, Any]:
     """
     カレンダーの予定を削除する
 
     Args:
-        access_token: Google OAuth2アクセストークン（AgentCore Identityから自動注入）
+        user_id: ユーザー識別子（LINEユーザーIDなど）
         event_id: 削除する予定のID
 
     Returns:
         削除結果
     """
     try:
+        # AgentCore Identityから Google OAuth トークンを取得
+        access_token = await get_google_access_token(user_id)
+
         # 認証情報を構築
         creds = Credentials(token=access_token, scopes=SCOPES)
 
@@ -312,10 +303,12 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     params = event.get("parameters", {})
 
     # 非同期関数を同期的に実行
+    user_id = params.get("user_id", "default-user")
+
     if operation == "list":
         result = asyncio.run(
             list_calendar_events(
-                access_token="",  # デコレーターが自動注入
+                user_id=user_id,
                 time_min=params.get("time_min"),
                 time_max=params.get("time_max"),
                 max_results=params.get("max_results", 10),
@@ -324,7 +317,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     elif operation == "create":
         result = asyncio.run(
             create_calendar_event(
-                access_token="",  # デコレーターが自動注入
+                user_id=user_id,
                 summary=params.get("summary"),
                 start_time=params.get("start_time"),
                 end_time=params.get("end_time"),
@@ -335,7 +328,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     elif operation == "update":
         result = asyncio.run(
             update_calendar_event(
-                access_token="",  # デコレーターが自動注入
+                user_id=user_id,
                 event_id=params.get("event_id"),
                 summary=params.get("summary"),
                 start_time=params.get("start_time"),
@@ -347,7 +340,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     elif operation == "delete":
         result = asyncio.run(
             delete_calendar_event(
-                access_token="",  # デコレーターが自動注入
+                user_id=user_id,
                 event_id=params.get("event_id"),
             )
         )

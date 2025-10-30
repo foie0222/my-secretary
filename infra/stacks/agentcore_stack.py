@@ -111,6 +111,15 @@ class AgentCoreStack(Stack):
             )
         )
 
+        # Lambda関数を呼び出す権限（カレンダー操作）
+        runtime_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=["lambda:InvokeFunction"],
+                resources=[lambda_function_arn],
+            )
+        )
+
         # AgentCore Gateway作成
         gateway = bedrockagentcore.CfnGateway(
             self,

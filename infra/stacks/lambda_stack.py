@@ -87,3 +87,13 @@ class LambdaStack(Stack):
         self.calendar_function.grant_invoke(
             iam.ServicePrincipal("bedrock-agentcore.amazonaws.com")
         )
+
+        # 出力: Lambda関数のARN（AgentCore Runtime環境変数用）
+        from aws_cdk import CfnOutput
+        CfnOutput(
+            self,
+            "CalendarFunctionArn",
+            value=self.calendar_function.function_arn,
+            description="Calendar operations Lambda function ARN (use as CALENDAR_LAMBDA_ARN in AgentCore Runtime)",
+            export_name=f"{self.stack_name}-CalendarFunctionArn",
+        )
