@@ -10,6 +10,7 @@ import hmac
 import json
 import logging
 import os
+import sys
 from typing import Any
 
 import boto3
@@ -28,10 +29,11 @@ from pydantic import BaseModel
 
 from agent.config import get_config
 
-# ログ設定
+# ログ設定 - 標準出力に明示的に出力
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger(__name__)
 
