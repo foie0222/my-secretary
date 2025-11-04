@@ -75,22 +75,26 @@ CHANNEL_SECRET, CHANNEL_ACCESS_TOKEN = get_line_credentials()
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 
-# AgentCore Gateway URL（環境変数またはAPIから取得）
-def get_gateway_url():
+# AgentCore Gateway URL and Target ID（環境変数またはAPIから取得）
+def get_gateway_config():
     """
-    Gateway URLを取得する
+    Gateway URLとTarget IDを取得する
     環境変数が設定されていればそれを使用し、なければAPI経由で取得
     """
     gateway_url = os.environ.get("GATEWAY_URL", "")
     gateway_id = os.environ.get("GATEWAY_ID", "")
+    gateway_target_id = os.environ.get("GATEWAY_TARGET_ID", "")
 
-    if gateway_url:
-        return gateway_url, gateway_id
+    if gateway_url and gateway_target_id:
+        return gateway_url, gateway_id, gateway_target_id
 
     # Gateway名から取得
     gateway_name = os.environ.get("GATEWAY_NAME", "line-agent-calendar-gateway")
+    target_name = os.environ.get("GATEWAY_TARGET_NAME", "calendar-operations")
+
     try:
         bedrock_agentcore_control = boto3.client("bedrock-agentcore-control", region_name=AWS_REGION)
+
         # Gatewayを一覧取得して該当するものを見つける
         response = bedrock_agentcore_control.list_gateways()
         for gateway in response.get("gateways", []):
@@ -98,15 +102,27 @@ def get_gateway_url():
                 gateway_id = gateway.get("gatewayId")
                 gateway_url = gateway.get("gatewayUrl")
                 logger.info(f"Found Gateway: {gateway_name} -> {gateway_url}")
-                return gateway_url, gateway_id
+
+                # Gateway Targetを取得
+                try:
+                    targets_response = bedrock_agentcore_control.list_gateway_targets(gatewayIdentifier=gateway_id)
+                    for target in targets_response.get("gatewayTargets", []):
+                        if target.get("name") == target_name:
+                            gateway_target_id = target.get("targetId")
+                            logger.info(f"Found Target: {target_name} -> {gateway_target_id}")
+                            break
+                except Exception as e:
+                    logger.error(f"Failed to get Gateway Target: {e}")
+
+                return gateway_url, gateway_id, gateway_target_id
 
         logger.warning(f"Gateway not found: {gateway_name}")
     except Exception as e:
-        logger.error(f"Failed to get Gateway URL from API: {e}")
+        logger.error(f"Failed to get Gateway config from API: {e}")
 
-    return "", ""
+    return "", "", ""
 
-GATEWAY_URL, GATEWAY_ID = get_gateway_url()
+GATEWAY_URL, GATEWAY_ID, GATEWAY_TARGET_ID = get_gateway_config()
 
 # Claudeに渡すツール定義
 CALENDAR_TOOLS = [
@@ -244,17 +260,20 @@ def execute_calendar_tool(tool_name: str, tool_input: dict[str, Any], user_id: s
 
     try:
         # MCP tools/call リクエストを構築
+        # ツール名を{TargetId}___{ToolName}形式に変換
+        mcp_tool_name = f"{GATEWAY_TARGET_ID}___{tool_name}"
+
         mcp_request = {
             "jsonrpc": "2.0",
             "id": 1,
             "method": "tools/call",
             "params": {
-                "name": tool_name,
+                "name": mcp_tool_name,
                 "arguments": tool_input
             }
         }
 
-        logger.info(f"Calling Gateway: {GATEWAY_URL} with tool={tool_name}")
+        logger.info(f"Calling Gateway: {GATEWAY_URL} with tool={mcp_tool_name}")
 
         # GatewayにHTTPリクエストを送信（IAM認証のみ）
         import requests

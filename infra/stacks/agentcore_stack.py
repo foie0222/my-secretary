@@ -78,6 +78,7 @@ class AgentCoreStack(Stack):
                     "bedrock-agentcore:InvokeGateway",
                     "bedrock-agentcore:ListGatewayTargets",
                     "bedrock-agentcore-control:ListGateways",
+                    "bedrock-agentcore-control:ListGatewayTargets",
                     "bedrock-agentcore-control:GetGateway",
                 ],
                 resources=["*"],  # 本番環境では適切なARNに制限すること
