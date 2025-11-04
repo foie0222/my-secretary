@@ -89,7 +89,7 @@ class AgentCoreStack(Stack):
             iam.PolicyStatement(
                 effect=iam.Effect.ALLOW,
                 actions=[
-                    "bedrock-agentcore-control:GetWorkloadAccessTokenForUserId",
+                    "bedrock-agentcore:GetWorkloadAccessTokenForUserId",
                 ],
                 resources=["*"],  # 本番環境では適切なARNに制限すること
             )
