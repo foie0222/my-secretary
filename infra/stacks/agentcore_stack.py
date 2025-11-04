@@ -84,6 +84,17 @@ class AgentCoreStack(Stack):
             )
         )
 
+        # AgentCore Identity - Workload Access Token取得権限
+        runtime_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "bedrock-agentcore-control:GetWorkloadAccessTokenForUserId",
+                ],
+                resources=["*"],  # 本番環境では適切なARNに制限すること
+            )
+        )
+
         # ECRからDockerイメージを取得する権限
         runtime_role.add_to_policy(
             iam.PolicyStatement(
