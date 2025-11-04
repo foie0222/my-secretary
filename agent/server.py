@@ -264,7 +264,10 @@ def execute_calendar_tool(tool_name: str, tool_input: dict[str, Any], user_id: s
     Returns:
         ツールの実行結果
     """
+    logger.info(f"execute_calendar_tool called: tool_name={tool_name}, GATEWAY_URL={GATEWAY_URL}, GATEWAY_TARGET_ID={GATEWAY_TARGET_ID}")
+
     if not GATEWAY_URL:
+        logger.error("Gateway URL not configured")
         return {"success": False, "error": "Gateway URL not configured"}
 
     try:
