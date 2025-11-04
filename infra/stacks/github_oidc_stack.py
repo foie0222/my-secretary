@@ -5,6 +5,7 @@ GitHub ActionsからAWSリソースへのアクセスを可能にするOIDCプ�
 """
 
 from aws_cdk import CfnOutput, Stack
+from aws_cdk import aws_ecr as ecr
 from aws_cdk import aws_iam as iam
 from constructs import Construct
 
@@ -124,6 +125,13 @@ class GitHubOIDCStack(Stack):
                 f"Value: {github_role.role_arn}"
             ),
             description="GitHub Secretsの設定手順",
+        )
+
+        # 既存のECRリポジトリを参照
+        self.ecr_repository = ecr.Repository.from_repository_name(
+            self,
+            "ECRRepository",
+            repository_name=ecr_repository_name,
         )
 
         # ロールを他のスタックから参照できるようにする

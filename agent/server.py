@@ -40,22 +40,73 @@ logger = logging.getLogger(__name__)
 # FastAPIアプリケーション
 app = FastAPI(title="LINE Agent Secretary - AgentCore Runtime")
 
-# LINE Bot設定（環境変数から取得）
-CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "")
-CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
-
-# LINE Bot API設定
-configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
-handler = WebhookHandler(CHANNEL_SECRET)
-
 # AWS クライアント
 AWS_REGION = os.environ.get("AWS_REGION", "ap-northeast-1")
 bedrock_runtime = boto3.client("bedrock-runtime", region_name=AWS_REGION)
 bedrock_agentcore = boto3.client("bedrock-agentcore", region_name=AWS_REGION)
 
-# AgentCore Gateway URL（環境変数から取得）
-GATEWAY_URL = os.environ.get("GATEWAY_URL", "")
-GATEWAY_ID = os.environ.get("GATEWAY_ID", "")
+# LINE Bot設定（環境変数またはSecrets Managerから取得）
+def get_line_credentials():
+    """
+    LINE認証情報を取得する
+    環境変数が設定されていればそれを使用し、なければSecrets Managerから取得
+    """
+    channel_secret = os.environ.get("LINE_CHANNEL_SECRET", "")
+    channel_access_token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
+
+    # 環境変数が設定されていない場合、Secrets Managerから取得
+    if not channel_secret or not channel_access_token:
+        line_secret_name = os.environ.get("LINE_SECRET_NAME", "line-agent-secretary/line-credentials")
+        try:
+            secretsmanager = boto3.client("secretsmanager", region_name=AWS_REGION)
+            response = secretsmanager.get_secret_value(SecretId=line_secret_name)
+            secret_data = json.loads(response["SecretString"])
+            channel_secret = secret_data.get("channel_secret", "")
+            channel_access_token = secret_data.get("channel_access_token", "")
+            logger.info("Loaded LINE credentials from Secrets Manager")
+        except Exception as e:
+            logger.error(f"Failed to load LINE credentials from Secrets Manager: {e}")
+
+    return channel_secret, channel_access_token
+
+CHANNEL_SECRET, CHANNEL_ACCESS_TOKEN = get_line_credentials()
+
+# LINE Bot API設定
+configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
+handler = WebhookHandler(CHANNEL_SECRET)
+
+# AgentCore Gateway URL（環境変数またはAPIから取得）
+def get_gateway_url():
+    """
+    Gateway URLを取得する
+    環境変数が設定されていればそれを使用し、なければAPI経由で取得
+    """
+    gateway_url = os.environ.get("GATEWAY_URL", "")
+    gateway_id = os.environ.get("GATEWAY_ID", "")
+
+    if gateway_url:
+        return gateway_url, gateway_id
+
+    # Gateway名から取得
+    gateway_name = os.environ.get("GATEWAY_NAME", "line-agent-calendar-gateway")
+    try:
+        bedrock_agentcore_control = boto3.client("bedrock-agentcore-control", region_name=AWS_REGION)
+        # Gatewayを一覧取得して該当するものを見つける
+        response = bedrock_agentcore_control.list_gateways()
+        for gateway in response.get("gateways", []):
+            if gateway.get("name") == gateway_name:
+                gateway_id = gateway.get("gatewayId")
+                gateway_url = gateway.get("gatewayUrl")
+                logger.info(f"Found Gateway: {gateway_name} -> {gateway_url}")
+                return gateway_url, gateway_id
+
+        logger.warning(f"Gateway not found: {gateway_name}")
+    except Exception as e:
+        logger.error(f"Failed to get Gateway URL from API: {e}")
+
+    return "", ""
+
+GATEWAY_URL, GATEWAY_ID = get_gateway_url()
 
 # Claudeに渡すツール定義
 CALENDAR_TOOLS = [

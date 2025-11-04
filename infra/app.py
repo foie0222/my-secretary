@@ -53,6 +53,7 @@ agentcore_stack = AgentCoreStack(
     app,
     "LineAgentAgentCoreStack",
     lambda_function_arn=lambda_stack.calendar_function.function_arn,
+    line_secret=secrets_stack.line_secret,
     env=env,
     description="AgentCore Runtime and Gateway configuration",
 )
@@ -69,6 +70,7 @@ line_webhook_stack = LineWebhookStack(
 
 # スタック間の依存関係を設定
 agentcore_stack.add_dependency(lambda_stack)
+agentcore_stack.add_dependency(secrets_stack)
 line_webhook_stack.add_dependency(agentcore_stack)
 
 # タグを追加（コスト管理用）

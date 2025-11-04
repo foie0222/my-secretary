@@ -8,6 +8,7 @@ GatewayとLambda TargetをCDKで完全に定義します。
 from aws_cdk import CfnOutput, Stack
 from aws_cdk import aws_bedrockagentcore as bedrockagentcore
 from aws_cdk import aws_iam as iam
+from aws_cdk import aws_secretsmanager as secretsmanager
 from constructs import Construct
 
 
@@ -19,6 +20,7 @@ class AgentCoreStack(Stack):
         scope: Construct,
         construct_id: str,
         lambda_function_arn: str,
+        line_secret: secretsmanager.ISecret,
         **kwargs,
     ) -> None:
         """
@@ -26,6 +28,7 @@ class AgentCoreStack(Stack):
             scope: CDKスコープ
             construct_id: コンストラクトID
             lambda_function_arn: Calendar操作Lambda関数のARN
+            line_secret: LINE認証情報のSecret
             **kwargs: その他のスタックパラメータ
         """
         super().__init__(scope, construct_id, **kwargs)
@@ -74,6 +77,8 @@ class AgentCoreStack(Stack):
                 actions=[
                     "bedrock-agentcore:InvokeGateway",
                     "bedrock-agentcore:ListGatewayTargets",
+                    "bedrock-agentcore-control:ListGateways",
+                    "bedrock-agentcore-control:GetGateway",
                 ],
                 resources=["*"],  # 本番環境では適切なARNに制限すること
             )
@@ -119,6 +124,9 @@ class AgentCoreStack(Stack):
                 resources=[lambda_function_arn],
             )
         )
+
+        # Secrets Managerから認証情報を読み取る権限
+        line_secret.grant_read(runtime_role)
 
         # AgentCore Gateway作成
         gateway = bedrockagentcore.CfnGateway(
@@ -166,6 +174,9 @@ class AgentCoreStack(Stack):
 
         # TargetはGatewayに依存
         calendar_target.add_dependency(gateway)
+
+        # Note: AgentCore Runtimeの環境変数設定はCDKでサポートされていないため、
+        # agent/server.pyが動的にSecrets ManagerとAPI経由で必要な情報を取得します
 
         # 出力
         CfnOutput(
