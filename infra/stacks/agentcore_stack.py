@@ -76,6 +76,7 @@ class AgentCoreStack(Stack):
                 effect=iam.Effect.ALLOW,
                 actions=[
                     "bedrock-agentcore:InvokeGateway",
+                    "bedrock-agentcore:GetGateway",
                     "bedrock-agentcore:ListGateways",
                     "bedrock-agentcore:ListGatewayTargets",
                     "bedrock-agentcore-control:ListGateways",
