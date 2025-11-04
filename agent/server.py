@@ -246,7 +246,7 @@ def execute_calendar_tool(tool_name: str, tool_input: dict[str, Any], user_id: s
         # Workload Access Tokenを取得
         try:
             workload_token_response = bedrock_agentcore.get_workload_access_token_for_user_id(
-                workloadIdentityName=f"line_agent_secretary-Z8wcZvH0aN",
+                workloadName=f"line_agent_secretary-Z8wcZvH0aN",
                 userId=user_id
             )
             workload_token = workload_token_response['accessToken']
