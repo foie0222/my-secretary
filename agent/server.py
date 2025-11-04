@@ -98,17 +98,24 @@ def get_gateway_config():
         # Gatewayを一覧取得して該当するものを見つける
         response = bedrock_agentcore_control.list_gateways()
         logger.info(f"ListGateways response: {response}")
-        for gateway in response.get("gateways", []):
+        for gateway in response.get("items", []):
             logger.info(f"Checking gateway: {gateway}")
             if gateway.get("name") == gateway_name:
                 gateway_id = gateway.get("gatewayId")
-                gateway_url = gateway.get("gatewayUrl")
-                logger.info(f"Found Gateway: {gateway_name} -> {gateway_url}")
+
+                # Gateway詳細を取得してURLを入手
+                try:
+                    gateway_detail = bedrock_agentcore_control.get_gateway(gatewayIdentifier=gateway_id)
+                    gateway_url = gateway_detail.get("gatewayUrl")
+                    logger.info(f"Found Gateway: {gateway_name} -> {gateway_url}")
+                except Exception as e:
+                    logger.error(f"Failed to get Gateway detail: {e}")
+                    gateway_url = ""
 
                 # Gateway Targetを取得
                 try:
                     targets_response = bedrock_agentcore_control.list_gateway_targets(gatewayIdentifier=gateway_id)
-                    for target in targets_response.get("gatewayTargets", []):
+                    for target in targets_response.get("items", []):
                         if target.get("name") == target_name:
                             gateway_target_id = target.get("targetId")
                             logger.info(f"Found Target: {target_name} -> {gateway_target_id}")
