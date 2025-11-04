@@ -243,18 +243,6 @@ def execute_calendar_tool(tool_name: str, tool_input: dict[str, Any], user_id: s
         return {"success": False, "error": "Gateway URL not configured"}
 
     try:
-        # Workload Access Tokenを取得
-        try:
-            workload_token_response = bedrock_agentcore.get_workload_access_token_for_user_id(
-                workloadName=f"line_agent_secretary-Z8wcZvH0aN",
-                userId=user_id
-            )
-            workload_token = workload_token_response['accessToken']
-            logger.info(f"Got workload access token for user {user_id}")
-        except Exception as e:
-            logger.error(f"Failed to get workload access token: {e}")
-            return {"success": False, "error": f"Authentication error: {str(e)}"}
-
         # MCP tools/call リクエストを構築
         mcp_request = {
             "jsonrpc": "2.0",
@@ -268,15 +256,14 @@ def execute_calendar_tool(tool_name: str, tool_input: dict[str, Any], user_id: s
 
         logger.info(f"Calling Gateway: {GATEWAY_URL} with tool={tool_name}")
 
-        # GatewayにHTTPリクエストを送信（IAM認証付き）
+        # GatewayにHTTPリクエストを送信（IAM認証のみ）
         import requests
         from botocore.auth import SigV4Auth
         from botocore.awsrequest import AWSRequest
 
-        # リクエストを準備
+        # リクエストを準備（Workload Access Tokenは不要、IAM認証のみ）
         headers = {
             "Content-Type": "application/json",
-            "X-Workload-Access-Token": workload_token
         }
 
         request = AWSRequest(
