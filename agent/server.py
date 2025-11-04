@@ -97,7 +97,9 @@ def get_gateway_config():
 
         # Gatewayを一覧取得して該当するものを見つける
         response = bedrock_agentcore_control.list_gateways()
+        logger.info(f"ListGateways response: {response}")
         for gateway in response.get("gateways", []):
+            logger.info(f"Checking gateway: {gateway}")
             if gateway.get("name") == gateway_name:
                 gateway_id = gateway.get("gatewayId")
                 gateway_url = gateway.get("gatewayUrl")
