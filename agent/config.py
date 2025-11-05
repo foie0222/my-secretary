@@ -24,17 +24,6 @@ class Config(BaseSettings):
         description="AgentCore Runtime ID (デプロイ後に設定)",
     )
 
-    # LINE設定
-    line_channel_secret: str = Field(
-        ...,
-        description="LINE Channel Secret",
-    )
-
-    line_channel_access_token: str = Field(
-        ...,
-        description="LINE Channel Access Token",
-    )
-
     # AWS設定
     aws_region: str = Field(
         default="ap-northeast-1",

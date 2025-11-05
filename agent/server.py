@@ -14,17 +14,7 @@ import sys
 from typing import Any
 
 import boto3
-from fastapi import FastAPI, HTTPException, Request, Header
-from linebot.v3 import WebhookHandler
-from linebot.v3.exceptions import InvalidSignatureError
-from linebot.v3.messaging import (
-    Configuration,
-    ApiClient,
-    MessagingApi,
-    ReplyMessageRequest,
-    TextMessage as LineTextMessage,
-)
-from linebot.v3.webhooks import MessageEvent, TextMessageContent
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
 from agent.config import get_config
@@ -44,36 +34,6 @@ app = FastAPI(title="LINE Agent Secretary - AgentCore Runtime")
 AWS_REGION = os.environ.get("AWS_REGION", "ap-northeast-1")
 bedrock_runtime = boto3.client("bedrock-runtime", region_name=AWS_REGION)
 bedrock_agentcore = boto3.client("bedrock-agentcore", region_name=AWS_REGION)
-
-# LINE Bot設定（環境変数またはSecrets Managerから取得）
-def get_line_credentials():
-    """
-    LINE認証情報を取得する
-    環境変数が設定されていればそれを使用し、なければSecrets Managerから取得
-    """
-    channel_secret = os.environ.get("LINE_CHANNEL_SECRET", "")
-    channel_access_token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
-
-    # 環境変数が設定されていない場合、Secrets Managerから取得
-    if not channel_secret or not channel_access_token:
-        line_secret_name = os.environ.get("LINE_SECRET_NAME", "line-agent-secretary/line-credentials")
-        try:
-            secretsmanager = boto3.client("secretsmanager", region_name=AWS_REGION)
-            response = secretsmanager.get_secret_value(SecretId=line_secret_name)
-            secret_data = json.loads(response["SecretString"])
-            channel_secret = secret_data.get("channel_secret", "")
-            channel_access_token = secret_data.get("channel_access_token", "")
-            logger.info("Loaded LINE credentials from Secrets Manager")
-        except Exception as e:
-            logger.error(f"Failed to load LINE credentials from Secrets Manager: {e}")
-
-    return channel_secret, channel_access_token
-
-CHANNEL_SECRET, CHANNEL_ACCESS_TOKEN = get_line_credentials()
-
-# LINE Bot API設定
-configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
-handler = WebhookHandler(CHANNEL_SECRET)
 
 # AgentCore Gateway URL and Target Name（環境変数またはAPIから取得）
 def get_gateway_config():

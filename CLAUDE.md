@@ -182,9 +182,6 @@ LineWebhookStack (API Gateway + Webhook Lambda)
 ### Environment Variables
 
 **Agent Runtime** (agent/server.py):
-- `LINE_CHANNEL_SECRET`: LINE channel secret
-- `LINE_CHANNEL_ACCESS_TOKEN`: LINE channel access token
-- `CALENDAR_LAMBDA_ARN`: **Required** - ARN of the calendar operations Lambda function (obtain from CDK output: `CalendarFunctionArn`)
 - `AWS_REGION`: AWS region (default: ap-northeast-1)
 - `PORT`: Local server port (default: 8000)
 
