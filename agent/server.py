@@ -5,6 +5,7 @@ AgentCore Runtimeで実行されるHTTPサーバー
 /ping、/invocations、/webhook エンドポイントを提供する
 """
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -17,8 +18,6 @@ import boto3
 from bedrock_agentcore.identity.auth import requires_access_token
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
-
-from agent.config import get_config
 
 # ログ設定 - 標準出力に明示的に出力
 logging.basicConfig(
