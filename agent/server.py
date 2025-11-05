@@ -506,7 +506,13 @@ async def invocations(http_request: Request, request: InvocationRequest) -> Invo
         logger.info(f"Request headers: {dict(http_request.headers)}")
 
         # Extract workload access token from headers (provided by AgentCore Runtime)
-        workload_access_token = http_request.headers.get("workloadaccesstoken") or http_request.headers.get("WorkloadAccessToken") or http_request.headers.get("x-amzn-bedrock-agentcore-workload-access-token")
+        # Try multiple possible header names
+        workload_access_token = (
+            http_request.headers.get("workloadaccesstoken") or
+            http_request.headers.get("WorkloadAccessToken") or
+            http_request.headers.get("x-amzn-bedrock-agentcore-workload-access-token") or
+            http_request.headers.get("x-aws-guest-auth")  # Try guest auth token
+        )
         if workload_access_token:
             logger.info(f"Found Workload Access Token in headers (length: {len(workload_access_token)}), setting it in BedrockAgentCoreContext")
             BedrockAgentCoreContext.set_workload_access_token(workload_access_token)
