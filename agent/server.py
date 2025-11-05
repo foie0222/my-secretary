@@ -1,8 +1,7 @@
 """
 AgentCore Runtime Server
 
-AgentCore Runtimeで実行されるHTTPサーバー
-/ping、/invocations、/webhook エンドポイントを提供する
+BedrockAgentCoreAppを使用してAgentCore Runtimeで実行されるサーバー
 """
 
 import asyncio
@@ -14,10 +13,8 @@ import sys
 from typing import Any
 
 import boto3
+from bedrock_agentcore import BedrockAgentCoreApp, RequestContext
 from bedrock_agentcore.identity.auth import requires_access_token
-from bedrock_agentcore.runtime.context import BedrockAgentCoreContext
-from fastapi import FastAPI, HTTPException, Request
-from pydantic import BaseModel
 
 # Context variable for user_id (for AgentCore Identity SDK)
 current_user_id: contextvars.ContextVar[str] = contextvars.ContextVar('current_user_id', default='default-user')
@@ -30,8 +27,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# FastAPIアプリケーション
-app = FastAPI(title="LINE Agent Secretary - AgentCore Runtime")
+# BedrockAgentCoreAppアプリケーション
+app = BedrockAgentCoreApp()
 
 # AWS クライアント
 AWS_REGION = os.environ.get("AWS_REGION", "ap-northeast-1")
@@ -113,13 +110,14 @@ CALENDAR_TOOLS = [
                 },
                 "time_max": {
                     "type": "string",
-                    "description": "取得終了日時（ISO 8601形式、例: 2025-11-06T23:59:59+09:00）"
+                    "description": "取得終了日時（ISO 8601形式、例: 2025-10-30T23:59:59+09:00）"
                 },
                 "max_results": {
                     "type": "integer",
-                    "description": "最大取得件数（デフォルト: 10）"
+                    "description": "取得する予定の最大数（デフォルト: 10）"
                 }
-            }
+            },
+            "required": ["time_min", "time_max"]
         }
     },
     {
@@ -142,7 +140,7 @@ CALENDAR_TOOLS = [
                 },
                 "description": {
                     "type": "string",
-                    "description": "予定の説明（オプション）"
+                    "description": "予定の詳細説明（オプション）"
                 },
                 "location": {
                     "type": "string",
@@ -164,23 +162,23 @@ CALENDAR_TOOLS = [
                 },
                 "summary": {
                     "type": "string",
-                    "description": "予定のタイトル（オプション）"
+                    "description": "新しいタイトル（オプション）"
                 },
                 "start_time": {
                     "type": "string",
-                    "description": "開始日時（ISO 8601形式、オプション）"
+                    "description": "新しい開始日時（ISO 8601形式、オプション）"
                 },
                 "end_time": {
                     "type": "string",
-                    "description": "終了日時（ISO 8601形式、オプション）"
+                    "description": "新しい終了日時（ISO 8601形式、オプション）"
                 },
                 "description": {
                     "type": "string",
-                    "description": "予定の説明（オプション）"
+                    "description": "新しい詳細説明（オプション）"
                 },
                 "location": {
                     "type": "string",
-                    "description": "場所（オプション）"
+                    "description": "新しい場所（オプション）"
                 }
             },
             "required": ["event_id"]
@@ -188,7 +186,7 @@ CALENDAR_TOOLS = [
     },
     {
         "name": "delete_calendar_event",
-        "description": "カレンダーの予定を削除する。",
+        "description": "カレンダーから予定を削除する。",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -201,21 +199,6 @@ CALENDAR_TOOLS = [
         }
     }
 ]
-
-
-class InvocationRequest(BaseModel):
-    """AgentCore Runtimeからの呼び出しリクエスト"""
-
-    prompt: str
-    user_id: str | None = None
-    metadata: dict[str, Any] | None = None
-
-
-class InvocationResponse(BaseModel):
-    """AgentCore Runtimeへの応答"""
-
-    response: str
-    metadata: dict[str, Any] | None = None
 
 
 def execute_calendar_tool(tool_name: str, tool_input: dict[str, Any], user_id: str = "default-user") -> dict[str, Any]:
@@ -341,19 +324,6 @@ async def execute_calendar_tool_with_oauth(
 
     # Gateway経由でLambdaを呼び出し
     return execute_calendar_tool(tool_name, tool_input_with_token, user_id)
-
-
-@app.get("/ping")
-async def ping() -> dict[str, str]:
-    """
-    ヘルスチェックエンドポイント
-
-    AgentCore Runtimeがコンテナの健全性を確認するために使用
-
-    Returns:
-        {"status": "Healthy"}
-    """
-    return {"status": "Healthy"}
 
 
 async def generate_ai_response(user_message: str, user_id: str = "default-user") -> str:
@@ -484,73 +454,51 @@ Googleカレンダーの操作ツールを使って、以下のことができ�
         return f"エラーが発生しました: {str(e)}"
 
 
-@app.post("/invocations")
-async def invocations(http_request: Request, request: InvocationRequest) -> InvocationResponse:
+@app.entrypoint
+async def agent_invocation(payload: dict[str, Any], context: RequestContext) -> dict[str, str]:
     """
-    AgentCore Runtimeからの呼び出しエンドポイント
+    AgentCore Runtimeからの呼び出しエントリーポイント
 
-    このエンドポイントは、AgentCore Runtimeがエージェントを呼び出すときに使用される。
-    ユーザーからのメッセージ（prompt）を受け取り、エージェントの応答を返す。
+    BedrockAgentCoreAppが自動的にWorkloadAccessTokenなどのヘッダーを処理します。
 
     Args:
-        http_request: FastAPI Requestオブジェクト（headersを取得するため）
-        request: 呼び出しリクエスト（prompt, user_id, metadata）
+        payload: リクエストペイロード（prompt, user_id, metadata）
+        context: RequestContext（headers, session_idなどを含む）
 
     Returns:
         エージェントの応答
     """
     try:
-        logger.info(f"Received invocation request: prompt='{request.prompt[:50]}...', user_id={request.user_id}")
+        # ペイロードからpromptを取得
+        user_message = payload.get("prompt", "")
+        user_id = payload.get("user_id", "default-user")
 
-        # Log all headers for debugging
-        logger.info(f"Request headers: {dict(http_request.headers)}")
+        logger.info(f"Received invocation: prompt='{user_message[:50]}...', user_id={user_id}")
 
-        # Extract workload access token from headers (provided by AgentCore Runtime)
-        # Try multiple possible header names
-        workload_access_token = (
-            http_request.headers.get("workloadaccesstoken") or
-            http_request.headers.get("WorkloadAccessToken") or
-            http_request.headers.get("x-amzn-bedrock-agentcore-workload-access-token") or
-            http_request.headers.get("x-aws-guest-auth")  # Try guest auth token
-        )
-        if workload_access_token:
-            logger.info(f"Found Workload Access Token in headers (length: {len(workload_access_token)}), setting it in BedrockAgentCoreContext")
-            BedrockAgentCoreContext.set_workload_access_token(workload_access_token)
-        else:
-            logger.warning("No Workload Access Token found in headers")
+        # RequestContextからヘッダーを確認（デバッグ用）
+        if hasattr(context, 'request_headers'):
+            logger.info(f"Request headers: {context.request_headers}")
 
         # Set user_id in context for AgentCore Identity SDK
-        user_id = request.user_id or "default-user"
         current_user_id.set(user_id)
 
         # Bedrockを使ってAI応答を生成
-        agent_response = await generate_ai_response(request.prompt, user_id=user_id)
+        agent_response = await generate_ai_response(user_message, user_id=user_id)
 
-        return InvocationResponse(
-            response=agent_response,
-            metadata={"user_id": user_id},
-        )
+        return {
+            "response": agent_response,
+            "metadata": {"user_id": user_id}
+        }
 
     except Exception as e:
         logger.error(f"Error processing invocation: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/health")
-async def health() -> dict[str, str]:
-    """
-    追加のヘルスチェックエンドポイント
-
-    Returns:
-        {"status": "healthy"}
-    """
-    return {"status": "healthy"}
+        return {
+            "response": f"エラーが発生しました: {str(e)}",
+            "metadata": {"error": str(e)}
+        }
 
 
 if __name__ == "__main__":
-    # AgentCore Runtime環境で実行
-    import uvicorn
-
-    port = 8080  # AgentCore Runtimeの要件
-    logger.info(f"Starting AgentCore Runtime server on port {port}")
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    # BedrockAgentCoreApp.run()を呼び出してサーバーを起動
+    logger.info("Starting AgentCore Runtime server with BedrockAgentCoreApp")
+    app.run()
