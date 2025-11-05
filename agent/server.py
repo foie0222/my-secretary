@@ -6,6 +6,7 @@ AgentCore Runtimeで実行されるHTTPサーバー
 """
 
 import asyncio
+import contextvars
 import json
 import logging
 import os
@@ -16,6 +17,9 @@ import boto3
 from bedrock_agentcore.identity.auth import requires_access_token
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+
+# Context variable for user_id (for AgentCore Identity SDK)
+current_user_id: contextvars.ContextVar[str] = contextvars.ContextVar('current_user_id', default='default-user')
 
 # ログ設定 - 標準出力に明示的に出力
 logging.basicConfig(
@@ -351,12 +355,13 @@ async def ping() -> dict[str, str]:
     return {"status": "Healthy"}
 
 
-async def generate_ai_response(user_message: str) -> str:
+async def generate_ai_response(user_message: str, user_id: str = "default-user") -> str:
     """
     Bedrockを使ってAI応答を生成する（ツール呼び出しに対応）
 
     Args:
         user_message: ユーザーからのメッセージ
+        user_id: ユーザーID（OAuth2トークン取得に使用）
 
     Returns:
         AIが生成した応答
@@ -435,7 +440,8 @@ Googleカレンダーの操作ツールを使って、以下のことができ�
                         tool_result = await execute_calendar_tool_with_oauth(
                             access_token="",  # Decorator will inject the actual token
                             tool_name=tool_name,
-                            tool_input=tool_input
+                            tool_input=tool_input,
+                            user_id=user_id
                         )
 
                         # ツール結果を追加
@@ -494,12 +500,16 @@ async def invocations(request: InvocationRequest) -> InvocationResponse:
     try:
         logger.info(f"Received invocation request: prompt='{request.prompt[:50]}...', user_id={request.user_id}")
 
+        # Set user_id in context for AgentCore Identity SDK
+        user_id = request.user_id or "default-user"
+        current_user_id.set(user_id)
+
         # Bedrockを使ってAI応答を生成
-        agent_response = await generate_ai_response(request.prompt)
+        agent_response = await generate_ai_response(request.prompt, user_id=user_id)
 
         return InvocationResponse(
             response=agent_response,
-            metadata={"user_id": request.user_id},
+            metadata={"user_id": user_id},
         )
 
     except Exception as e:
