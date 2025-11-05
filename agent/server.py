@@ -15,7 +15,8 @@ from typing import Any
 
 import boto3
 from bedrock_agentcore.identity.auth import requires_access_token
-from fastapi import FastAPI, HTTPException
+from bedrock_agentcore.runtime.context import BedrockAgentCoreContext
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
 # Context variable for user_id (for AgentCore Identity SDK)
@@ -484,7 +485,7 @@ Googleカレンダーの操作ツールを使って、以下のことができ�
 
 
 @app.post("/invocations")
-async def invocations(request: InvocationRequest) -> InvocationResponse:
+async def invocations(http_request: Request, request: InvocationRequest) -> InvocationResponse:
     """
     AgentCore Runtimeからの呼び出しエンドポイント
 
@@ -492,6 +493,7 @@ async def invocations(request: InvocationRequest) -> InvocationResponse:
     ユーザーからのメッセージ（prompt）を受け取り、エージェントの応答を返す。
 
     Args:
+        http_request: FastAPI Requestオブジェクト（headersを取得するため）
         request: 呼び出しリクエスト（prompt, user_id, metadata）
 
     Returns:
@@ -499,6 +501,14 @@ async def invocations(request: InvocationRequest) -> InvocationResponse:
     """
     try:
         logger.info(f"Received invocation request: prompt='{request.prompt[:50]}...', user_id={request.user_id}")
+
+        # Extract workload access token from headers (provided by AgentCore Runtime)
+        workload_access_token = http_request.headers.get("workloadaccesstoken") or http_request.headers.get("WorkloadAccessToken")
+        if workload_access_token:
+            logger.info("Found Workload Access Token in headers, setting it in BedrockAgentCoreContext")
+            BedrockAgentCoreContext.set_workload_access_token(workload_access_token)
+        else:
+            logger.warning("No Workload Access Token found in headers")
 
         # Set user_id in context for AgentCore Identity SDK
         user_id = request.user_id or "default-user"
