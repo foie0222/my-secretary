@@ -5,7 +5,6 @@ AgentCore Runtimeで実行されるHTTPサーバー
 /ping、/invocations、/webhook エンドポイントを提供する
 """
 
-import asyncio
 import hashlib
 import hmac
 import json
@@ -354,7 +353,7 @@ async def ping() -> dict[str, str]:
     return {"status": "Healthy"}
 
 
-def generate_ai_response(user_message: str) -> str:
+async def generate_ai_response(user_message: str) -> str:
     """
     Bedrockを使ってAI応答を生成する（ツール呼び出しに対応）
 
@@ -435,12 +434,10 @@ Googleカレンダーの操作ツールを使って、以下のことができ�
                         logger.info(f"Executing tool: {tool_name} with input: {tool_input}")
 
                         # ツールを実行（OAuth2認証付き）
-                        tool_result = asyncio.run(
-                            execute_calendar_tool_with_oauth(
-                                access_token="",  # Decorator will inject the actual token
-                                tool_name=tool_name,
-                                tool_input=tool_input
-                            )
+                        tool_result = await execute_calendar_tool_with_oauth(
+                            access_token="",  # Decorator will inject the actual token
+                            tool_name=tool_name,
+                            tool_input=tool_input
                         )
 
                         # ツール結果を追加
@@ -500,7 +497,7 @@ async def invocations(request: InvocationRequest) -> InvocationResponse:
         logger.info(f"Received invocation request: prompt='{request.prompt[:50]}...', user_id={request.user_id}")
 
         # Bedrockを使ってAI応答を生成
-        agent_response = generate_ai_response(request.prompt)
+        agent_response = await generate_ai_response(request.prompt)
 
         return InvocationResponse(
             response=agent_response,
