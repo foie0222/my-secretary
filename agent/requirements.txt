@@ -1,6 +1,6 @@
 # Web Framework
-fastapi==0.115.0
-uvicorn[standard]==0.31.0
+fastapi>=0.120.1
+uvicorn[standard]>=0.32.0
 
 # Pydantic for configuration and data validation
 pydantic==2.9.2
