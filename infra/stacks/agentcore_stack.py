@@ -87,11 +87,13 @@ class AgentCoreStack(Stack):
             )
         )
 
-        # AgentCore Identity - Workload Access Token取得権限
+        # AgentCore Identity - Workload Identity管理とAccess Token取得権限
         runtime_role.add_to_policy(
             iam.PolicyStatement(
                 effect=iam.Effect.ALLOW,
                 actions=[
+                    "bedrock-agentcore:CreateWorkloadIdentity",
+                    "bedrock-agentcore:GetWorkloadIdentity",
                     "bedrock-agentcore:GetWorkloadAccessTokenForUserId",
                 ],
                 resources=["*"],  # 本番環境では適切なARNに制限すること
