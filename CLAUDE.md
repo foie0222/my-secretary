@@ -101,13 +101,11 @@ The project follows a clear separation between different concerns:
 
 1. **agent/** - AgentCore Runtime container
    - `server.py`: HTTP server with /ping, /invocations endpoints for AgentCore Runtime
-   - `config.py`: Configuration management
    - `Dockerfile`: Container image for AgentCore Runtime (ARM64)
 
 2. **functions/** - AWS Lambda functions
    - `calendar/operations.py`: Google Calendar CRUD operations using AgentCore Identity
    - `line_webhook/handler.py`: LINE webhook Lambda handler (invokes AgentCore Runtime)
-   - `common/utils.py`: Shared utilities
 
 3. **infra/** - AWS CDK infrastructure as code
    - `app.py`: CDK app entry point, orchestrates all stacks

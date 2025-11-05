@@ -2,9 +2,8 @@
 fastapi>=0.120.1
 uvicorn[standard]>=0.32.0
 
-# Pydantic for configuration and data validation
+# Pydantic for data validation
 pydantic==2.9.2
-pydantic-settings==2.5.2
 
 # AWS SDK for Python (Boto3) - for AgentCore Gateway integration
 # Requires boto3 >= 1.40.0 for bedrock-agentcore support

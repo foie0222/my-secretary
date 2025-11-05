@@ -6,8 +6,6 @@ AgentCore Runtimeで実行されるHTTPサーバー
 """
 
 import asyncio
-import hashlib
-import hmac
 import json
 import logging
 import os
@@ -16,7 +14,7 @@ from typing import Any
 
 import boto3
 from bedrock_agentcore.identity.auth import requires_access_token
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 # ログ設定 - 標準出力に明示的に出力
