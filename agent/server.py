@@ -502,10 +502,13 @@ async def invocations(http_request: Request, request: InvocationRequest) -> Invo
     try:
         logger.info(f"Received invocation request: prompt='{request.prompt[:50]}...', user_id={request.user_id}")
 
+        # Log all headers for debugging
+        logger.info(f"Request headers: {dict(http_request.headers)}")
+
         # Extract workload access token from headers (provided by AgentCore Runtime)
-        workload_access_token = http_request.headers.get("workloadaccesstoken") or http_request.headers.get("WorkloadAccessToken")
+        workload_access_token = http_request.headers.get("workloadaccesstoken") or http_request.headers.get("WorkloadAccessToken") or http_request.headers.get("x-amzn-bedrock-agentcore-workload-access-token")
         if workload_access_token:
-            logger.info("Found Workload Access Token in headers, setting it in BedrockAgentCoreContext")
+            logger.info(f"Found Workload Access Token in headers (length: {len(workload_access_token)}), setting it in BedrockAgentCoreContext")
             BedrockAgentCoreContext.set_workload_access_token(workload_access_token)
         else:
             logger.warning("No Workload Access Token found in headers")
