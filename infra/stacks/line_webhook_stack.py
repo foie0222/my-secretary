@@ -8,6 +8,7 @@ from aws_cdk import CfnOutput, Duration, Stack
 from aws_cdk import aws_apigateway as apigw
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as lambda_
+from aws_cdk import aws_secretsmanager as secretsmanager
 from aws_cdk.aws_lambda_python_alpha import PythonFunction
 from constructs import Construct
 
@@ -20,6 +21,7 @@ class LineWebhookStack(Stack):
         scope: Construct,
         construct_id: str,
         agent_runtime_id: str,
+        line_secret: secretsmanager.ISecret,
         **kwargs,
     ) -> None:
         """
@@ -27,6 +29,7 @@ class LineWebhookStack(Stack):
             scope: CDKスコープ
             construct_id: コンストラクトID
             agent_runtime_id: AgentCore RuntimeのID
+            line_secret: LINE認証情報のSecret
             **kwargs: その他のスタックパラメータ
         """
         super().__init__(scope, construct_id, **kwargs)
@@ -39,15 +42,18 @@ class LineWebhookStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_12,
             index="handler.py",
             handler="lambda_handler",
-            timeout=Duration.seconds(30),
+            timeout=Duration.seconds(120),  # Increased to 120 seconds
             memory_size=256,
             environment={
-                "LINE_CHANNEL_ACCESS_TOKEN": "REPLACE_WITH_YOUR_CHANNEL_ACCESS_TOKEN",
-                "LINE_CHANNEL_SECRET": "REPLACE_WITH_YOUR_CHANNEL_SECRET",
+                "LINE_CHANNEL_ACCESS_TOKEN": line_secret.secret_value_from_json("channel_access_token").unsafe_unwrap(),
+                "LINE_CHANNEL_SECRET": line_secret.secret_value_from_json("channel_secret").unsafe_unwrap(),
                 "AGENT_RUNTIME_ARN": f"arn:aws:bedrock-agentcore:{self.region}:{self.account}:runtime/{agent_runtime_id}",
             },
             description="LINE Webhook handler for LINE Agent Secretary",
         )
+
+        # Secrets Managerへの読み取り権限を付与
+        line_secret.grant_read(webhook_function)
 
         # AgentCore Runtimeを呼び出す権限
         webhook_function.add_to_role_policy(

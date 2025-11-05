@@ -64,6 +64,7 @@ line_webhook_stack = LineWebhookStack(
     app,
     "LineAgentWebhookStack",
     agent_runtime_id="line_agent_secretary-Z8wcZvH0aN",
+    line_secret=secrets_stack.line_secret,
     env=env,
     description="LINE Webhook handler with API Gateway",
 )
