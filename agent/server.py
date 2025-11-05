@@ -5,6 +5,7 @@ AgentCore Runtimeで実行されるHTTPサーバー
 /ping、/invocations、/webhook エンドポイントを提供する
 """
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -14,6 +15,7 @@ import sys
 from typing import Any
 
 import boto3
+from bedrock_agentcore.identity.auth import requires_access_token
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
@@ -306,6 +308,39 @@ def execute_calendar_tool(tool_name: str, tool_input: dict[str, Any], user_id: s
         return {"success": False, "error": str(e)}
 
 
+@requires_access_token(
+    provider_name="google-calendar-provider",
+    scopes=["https://www.googleapis.com/auth/calendar"],
+    auth_flow="USER_FEDERATION",
+    on_auth_url=lambda url: logger.info(f"Authorization required: {url}"),
+    force_authentication=False,
+)
+async def execute_calendar_tool_with_oauth(
+    *,
+    access_token: str,
+    tool_name: str,
+    tool_input: dict[str, Any],
+    user_id: str = "default-user"
+) -> dict[str, Any]:
+    """
+    OAuth2認証付きでカレンダーツールを実行する
+
+    Args:
+        access_token: Google OAuth access token (auto-injected by decorator)
+        tool_name: ツール名
+        tool_input: ツールの入力パラメータ
+        user_id: ユーザーID
+
+    Returns:
+        ツールの実行結果
+    """
+    # access_tokenをtool_inputに追加
+    tool_input_with_token = {**tool_input, "access_token": access_token}
+
+    # Gateway経由でLambdaを呼び出し
+    return execute_calendar_tool(tool_name, tool_input_with_token, user_id)
+
+
 @app.get("/ping")
 async def ping() -> dict[str, str]:
     """
@@ -399,8 +434,14 @@ Googleカレンダーの操作ツールを使って、以下のことができ�
 
                         logger.info(f"Executing tool: {tool_name} with input: {tool_input}")
 
-                        # ツールを実行
-                        tool_result = execute_calendar_tool(tool_name, tool_input)
+                        # ツールを実行（OAuth2認証付き）
+                        tool_result = asyncio.run(
+                            execute_calendar_tool_with_oauth(
+                                access_token="",  # Decorator will inject the actual token
+                                tool_name=tool_name,
+                                tool_input=tool_input
+                            )
+                        )
 
                         # ツール結果を追加
                         tool_results.append({

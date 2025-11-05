@@ -13,6 +13,9 @@ line-bot-sdk==3.13.0
 # Requires boto3 >= 1.40.0 for bedrock-agentcore support
 boto3>=1.40.62
 
+# AgentCore SDK - for OAuth2 identity management
+bedrock-agentcore
+
 # HTTP Client
 httpx==0.27.2
 requests==2.32.3
