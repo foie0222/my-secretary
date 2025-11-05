@@ -57,11 +57,6 @@ pytest tests/test_specific.py::test_function_name
 
 ### Local Development
 ```bash
-# Run local FastAPI server (for testing LINE webhooks with ngrok)
-cd agent
-python main.py
-# Server runs on http://localhost:8000
-
 # Run AgentCore Runtime server locally
 cd agent
 python server.py
@@ -106,8 +101,6 @@ The project follows a clear separation between different concerns:
 
 1. **agent/** - AgentCore Runtime container
    - `server.py`: HTTP server with /ping, /invocations endpoints for AgentCore Runtime
-   - `main.py`: Alternative Lambda handler and local development server
-   - `line_handler.py`: LINE webhook processing logic
    - `config.py`: Configuration management
    - `Dockerfile`: Container image for AgentCore Runtime (ARM64)
 
@@ -188,7 +181,7 @@ LineWebhookStack (API Gateway + Webhook Lambda)
 
 ### Environment Variables
 
-**Agent Runtime** (agent/server.py, agent/main.py):
+**Agent Runtime** (agent/server.py):
 - `LINE_CHANNEL_SECRET`: LINE channel secret
 - `LINE_CHANNEL_ACCESS_TOKEN`: LINE channel access token
 - `CALENDAR_LAMBDA_ARN`: **Required** - ARN of the calendar operations Lambda function (obtain from CDK output: `CalendarFunctionArn`)
