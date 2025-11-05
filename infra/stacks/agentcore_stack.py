@@ -145,6 +145,19 @@ class AgentCoreStack(Stack):
         # Secrets Managerから認証情報を読み取る権限
         line_secret.grant_read(runtime_role)
 
+        # OAuth2 Credential Providerが使用するSecrets Managerへのアクセス権限
+        # AgentCore Identityが管理するOAuth2 credentialsにアクセス可能にする
+        runtime_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "secretsmanager:GetSecretValue",
+                    "secretsmanager:DescribeSecret",
+                ],
+                resources=["*"],  # 本番環境ではAgentCore Identity管理のSecretのARNに制限すること
+            )
+        )
+
         # AgentCore Gateway作成
         gateway = bedrockagentcore.CfnGateway(
             self,
