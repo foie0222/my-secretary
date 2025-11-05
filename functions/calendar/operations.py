@@ -293,19 +293,40 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     AgentCore Gatewayから呼び出される際のハンドラー
 
     Args:
-        event: Lambda イベント（operation と parameters を含む）
-        context: Lambda コンテキスト
+        event: Lambda イベント（ツールの入力パラメータそのもの）
+        context: Lambda コンテキスト（bedrockAgentCoreToolNameを含む）
 
     Returns:
         操作結果
     """
-    operation = event.get("operation")
-    params = event.get("parameters", {})
+    # デバッグ: 受け取ったイベント全体をログ出力
+    import sys
+    print(f"[DEBUG] Received event: {json.dumps(event, default=str)}", file=sys.stdout, flush=True)
+    print(f"[DEBUG] Context custom: {context.client_context.custom if hasattr(context, 'client_context') and context.client_context else 'No client_context'}", file=sys.stdout, flush=True)
 
-    # 非同期関数を同期的に実行
+    # Gateway から渡される tool name を context から取得
+    # Tool name format: "{target_name}___{tool_name}"
+    delimiter = "___"
+    try:
+        original_tool_name = context.client_context.custom['bedrockAgentCoreToolName']
+        tool_name = original_tool_name[original_tool_name.index(delimiter) + len(delimiter):]
+        print(f"[DEBUG] Detected tool name: {tool_name}", file=sys.stdout, flush=True)
+    except (AttributeError, KeyError, ValueError) as e:
+        print(f"[ERROR] Failed to extract tool name from context: {e}", file=sys.stdout, flush=True)
+        return {
+            "statusCode": 400,
+            "body": json.dumps({
+                "success": False,
+                "error": f"Failed to extract tool name from context: {e}"
+            })
+        }
+
+    # event が parameters そのもの
+    params = event
     user_id = params.get("user_id", "default-user")
 
-    if operation == "list":
+    # Map tool names to operations
+    if tool_name == "list_calendar_events":
         result = asyncio.run(
             list_calendar_events(
                 user_id=user_id,
@@ -314,7 +335,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 max_results=params.get("max_results", 10),
             )
         )
-    elif operation == "create":
+    elif tool_name == "create_calendar_event":
         result = asyncio.run(
             create_calendar_event(
                 user_id=user_id,
@@ -325,7 +346,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 location=params.get("location"),
             )
         )
-    elif operation == "update":
+    elif tool_name == "update_calendar_event":
         result = asyncio.run(
             update_calendar_event(
                 user_id=user_id,
@@ -337,7 +358,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 location=params.get("location"),
             )
         )
-    elif operation == "delete":
+    elif tool_name == "delete_calendar_event":
         result = asyncio.run(
             delete_calendar_event(
                 user_id=user_id,
@@ -347,7 +368,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     else:
         result = {
             "success": False,
-            "error": f"Unknown operation: {operation}",
+            "error": f"Unknown tool: {tool_name}",
         }
 
     return {
