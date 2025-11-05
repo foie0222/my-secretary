@@ -124,12 +124,26 @@ def invoke_agent_runtime(input_text: str, user_id: str) -> str:
         # ペイロードを準備
         payload = json.dumps({"prompt": input_text}).encode()
 
-        # AgentCore Runtime呼び出し
-        response = bedrock_client.invoke_agent_runtime(
-            agentRuntimeArn=AGENT_RUNTIME_ARN,
-            runtimeSessionId=user_id,  # LINEユーザーIDをセッションIDとして使用
-            payload=payload,
-        )
+        # カスタムヘッダーを追加するためのイベントハンドラー
+        def add_user_id_header(request, **kwargs):
+            """Add X-Amzn-Bedrock-AgentCore-Runtime-User-Id header for user-specific OAuth tokens."""
+            request.headers.add_header('X-Amzn-Bedrock-AgentCore-Runtime-User-Id', user_id)
+
+        # イベントハンドラーを登録
+        event_system = bedrock_client.meta.events
+        event_name = 'before-sign.bedrock-agentcore.InvokeAgentRuntime'
+        handler_id = event_system.register_first(event_name, add_user_id_header)
+
+        try:
+            # AgentCore Runtime呼び出し
+            response = bedrock_client.invoke_agent_runtime(
+                agentRuntimeArn=AGENT_RUNTIME_ARN,
+                runtimeSessionId=user_id,  # LINEユーザーIDをセッションIDとして使用
+                payload=payload,
+            )
+        finally:
+            # イベントハンドラーを解除
+            event_system.unregister(event_name, handler_id)
 
         # ストリーミングレスポンスを処理
         if "text/event-stream" in response.get("contentType", ""):
