@@ -131,9 +131,9 @@ def invoke_agent_runtime(input_text: str, user_id: str) -> str:
             request.headers.add_header('X-Amzn-Bedrock-AgentCore-Runtime-User-Id', user_id)
             logger.info(f"Request headers after adding: {dict(request.headers)}")
 
-        # イベントハンドラーを登録
+        # イベントハンドラーを登録（署名後にヘッダーを追加）
         event_system = bedrock_client.meta.events
-        event_name = 'before-sign.bedrock-agentcore.InvokeAgentRuntime'
+        event_name = 'before-call.bedrock-agentcore.InvokeAgentRuntime'
         handler_id = event_system.register_first(event_name, add_user_id_header)
 
         logger.info(f"Invoking AgentCore Runtime with user_id: {user_id}")
