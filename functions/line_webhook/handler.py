@@ -128,12 +128,12 @@ def invoke_agent_runtime(input_text: str, user_id: str) -> str:
         def add_user_id_header(request, **kwargs):
             """Add X-Amzn-Bedrock-AgentCore-Runtime-User-Id header for user-specific OAuth tokens."""
             logger.info(f"Adding X-Amzn-Bedrock-AgentCore-Runtime-User-Id header with user_id: {user_id}")
-            request.headers.add_header('X-Amzn-Bedrock-AgentCore-Runtime-User-Id', user_id)
+            request.headers['X-Amzn-Bedrock-AgentCore-Runtime-User-Id'] = user_id
             logger.info(f"Request headers after adding: {dict(request.headers)}")
 
-        # イベントハンドラーを登録（署名後にヘッダーを追加）
+        # イベントハンドラーを登録（署名計算前にヘッダーを追加して署名に含める）
         event_system = bedrock_client.meta.events
-        event_name = 'before-call.bedrock-agentcore.InvokeAgentRuntime'
+        event_name = 'before-sign.bedrock-agentcore.InvokeAgentRuntime'
         handler_id = event_system.register_first(event_name, add_user_id_header)
 
         logger.info(f"Invoking AgentCore Runtime with user_id: {user_id}")
