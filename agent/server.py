@@ -295,8 +295,9 @@ def execute_calendar_tool(tool_name: str, tool_input: dict[str, Any], user_id: s
 @requires_access_token(
     provider_name="google-calendar-provider",
     scopes=["https://www.googleapis.com/auth/calendar"],
-    auth_flow="M2M",
-    on_auth_url=lambda url: logger.info(f"Authorization required: {url}"),
+    auth_flow="USER_FEDERATION",
+    callback_url="https://bedrock-agentcore.ap-northeast-1.amazonaws.com/identities/oauth2/callback",
+    on_auth_url=lambda url: logger.warning(f"⚠️  Google Calendar authorization required. Please complete at: {url}"),
     force_authentication=False,
 )
 async def execute_calendar_tool_with_oauth(
@@ -479,7 +480,9 @@ async def agent_invocation(payload: dict[str, Any], context: RequestContext) -> 
             logger.info(f"Request headers: {context.request_headers}")
 
         # Set user_id in context for AgentCore Identity SDK
-        current_user_id.set(user_id)
+        # 全ユーザーで同じGoogleアカウントを共有するため、固定のuser_idを使用
+        shared_user_id = "shared-calendar-user"
+        current_user_id.set(shared_user_id)
 
         # Bedrockを使ってAI応答を生成
         agent_response = await generate_ai_response(user_message, user_id=user_id)
