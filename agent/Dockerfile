@@ -21,6 +21,9 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 # Copy all agent files
 COPY . /app/agent/
 
+# Copy .agentcore.json to /app so the library can find it at runtime
+COPY .agentcore.json /app/.agentcore.json
+
 # Expose port 8080 (required by AgentCore Runtime)
 EXPOSE 8080
 
