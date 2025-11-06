@@ -10,6 +10,7 @@ import os
 from typing import Any
 
 import boto3
+import requests
 from linebot.v3 import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.messaging import (
@@ -20,6 +21,9 @@ from linebot.v3.messaging import (
     TextMessage,
 )
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
+
+# Cognito認証ヘルパーをインポート
+from cognito_auth import get_jwt_token_simple
 
 # ログ設定
 logger = logging.getLogger()
@@ -111,7 +115,7 @@ def handle_text_message(event: MessageEvent) -> None:
 
 def invoke_agent_runtime(input_text: str, user_id: str) -> str:
     """
-    AgentCore Runtimeを呼び出す
+    AgentCore Runtimeを呼び出す（JWT認証）
 
     Args:
         input_text: ユーザーからの入力テキスト
@@ -121,58 +125,54 @@ def invoke_agent_runtime(input_text: str, user_id: str) -> str:
         エージェントからの応答
     """
     try:
+        logger.info(f"Getting JWT token for LINE user: {user_id}")
+
+        # Cognito JWTトークンを取得
+        jwt_token = get_jwt_token_simple(user_id)
+
+        logger.info("JWT token retrieved successfully")
+
+        # Runtime URLを構築
+        runtime_url = f"https://{AGENT_RUNTIME_ARN.split('/')[-1]}.runtime.bedrock-agentcore.{AWS_REGION}.amazonaws.com/invocations"
+
         # ペイロードを準備
-        payload = json.dumps({"prompt": input_text}).encode()
+        payload = {"prompt": input_text}
 
-        # カスタムヘッダーを追加するためのイベントハンドラー
-        def add_user_id_header(request, **kwargs):
-            """Add X-Amzn-Bedrock-AgentCore-Runtime-User-Id header for user-specific OAuth tokens."""
-            logger.info(f"Adding X-Amzn-Bedrock-AgentCore-Runtime-User-Id header with user_id: {user_id}")
-            request.headers['X-Amzn-Bedrock-AgentCore-Runtime-User-Id'] = user_id
-            logger.info(f"Request headers after adding: {dict(request.headers)}")
+        # HTTPSリクエストヘッダー（JWT Bearer Token使用）
+        headers = {
+            "Authorization": f"Bearer {jwt_token}",
+            "Content-Type": "application/json",
+        }
 
-        # イベントハンドラーを登録（署名計算前にヘッダーを追加して署名に含める）
-        event_system = bedrock_client.meta.events
-        event_name = 'before-sign.bedrock-agentcore.InvokeAgentRuntime'
-        handler_id = event_system.register_first(event_name, add_user_id_header)
+        logger.info(f"Invoking Runtime with JWT auth: {runtime_url}")
 
-        logger.info(f"Invoking AgentCore Runtime with user_id: {user_id}")
+        # AgentCore Runtimeを呼び出し
+        response = requests.post(
+            runtime_url,
+            headers=headers,
+            json=payload,
+            timeout=120,
+        )
 
-        try:
-            # AgentCore Runtime呼び出し
-            response = bedrock_client.invoke_agent_runtime(
-                agentRuntimeArn=AGENT_RUNTIME_ARN,
-                runtimeSessionId=user_id,  # LINEユーザーIDをセッションIDとして使用
-                payload=payload,
-            )
-        finally:
-            # イベントハンドラーを解除
-            event_system.unregister(event_name, handler_id)
+        # レスポンスをチェック
+        if response.status_code != 200:
+            logger.error(f"Runtime returned error: {response.status_code} - {response.text}")
+            return f"エラーが発生しました（ステータス: {response.status_code}）"
 
-        # ストリーミングレスポンスを処理
-        if "text/event-stream" in response.get("contentType", ""):
-            # ストリーミングレスポンスの処理
-            content = []
-            for line in response["response"].iter_lines(chunk_size=10):
-                if line:
-                    line_text = line.decode("utf-8")
-                    if line_text.startswith("data: "):
-                        line_text = line_text[6:]
-                        content.append(line_text)
-            return "\n".join(content) if content else "申し訳ございません。応答を生成できませんでした。"
+        # JSONレスポンスをパース
+        result = response.json()
+        agent_response = result.get("response", "申し訳ございません。応答を生成できませんでした。")
 
-        elif response.get("contentType") == "application/json":
-            # JSON レスポンスの処理
-            content = []
-            for chunk in response.get("response", []):
-                content.append(chunk.decode("utf-8"))
-            result = json.loads("".join(content))
-            return result.get("response", "申し訳ございません。応答を生成できませんでした。")
+        logger.info("Successfully received response from Runtime")
+        return agent_response
 
-        else:
-            # その他のレスポンス
-            logger.warning(f"Unexpected content type: {response.get('contentType')}")
-            return "申し訳ございません。応答を生成できませんでした。"
+    except requests.exceptions.Timeout:
+        logger.error("Runtime invocation timed out")
+        return "タイムアウトしました。もう一度お試しください。"
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"HTTP request failed: {e}", exc_info=True)
+        return "通信エラーが発生しました。"
 
     except Exception as e:
         logger.error(f"Error invoking agent runtime: {e}", exc_info=True)

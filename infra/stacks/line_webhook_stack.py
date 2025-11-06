@@ -22,6 +22,8 @@ class LineWebhookStack(Stack):
         construct_id: str,
         agent_runtime_id: str,
         line_secret: secretsmanager.ISecret,
+        cognito_user_pool_id: str,
+        cognito_app_client_id: str,
         **kwargs,
     ) -> None:
         """
@@ -30,6 +32,8 @@ class LineWebhookStack(Stack):
             construct_id: コンストラクトID
             agent_runtime_id: AgentCore RuntimeのID
             line_secret: LINE認証情報のSecret
+            cognito_user_pool_id: Cognito User Pool ID
+            cognito_app_client_id: Cognito App Client ID
             **kwargs: その他のスタックパラメータ
         """
         super().__init__(scope, construct_id, **kwargs)
@@ -48,6 +52,8 @@ class LineWebhookStack(Stack):
                 "LINE_CHANNEL_ACCESS_TOKEN": line_secret.secret_value_from_json("channel_access_token").unsafe_unwrap(),
                 "LINE_CHANNEL_SECRET": line_secret.secret_value_from_json("channel_secret").unsafe_unwrap(),
                 "AGENT_RUNTIME_ARN": f"arn:aws:bedrock-agentcore:{self.region}:{self.account}:runtime/{agent_runtime_id}",
+                "COGNITO_USER_POOL_ID": cognito_user_pool_id,
+                "COGNITO_APP_CLIENT_ID": cognito_app_client_id,
             },
             description="LINE Webhook handler for LINE Agent Secretary",
         )
@@ -66,6 +72,22 @@ class LineWebhookStack(Stack):
                 resources=[
                     f"arn:aws:bedrock-agentcore:{self.region}:{self.account}:runtime/{agent_runtime_id}",
                     f"arn:aws:bedrock-agentcore:{self.region}:{self.account}:runtime/{agent_runtime_id}/*",
+                ],
+            )
+        )
+
+        # Cognito User Pool操作権限
+        webhook_function.add_to_role_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "cognito-idp:AdminGetUser",
+                    "cognito-idp:AdminCreateUser",
+                    "cognito-idp:AdminSetUserPassword",
+                    "cognito-idp:AdminInitiateAuth",
+                ],
+                resources=[
+                    f"arn:aws:cognito-idp:{self.region}:{self.account}:userpool/{cognito_user_pool_id}",
                 ],
             )
         )
