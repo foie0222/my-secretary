@@ -296,7 +296,6 @@ def execute_calendar_tool(tool_name: str, tool_input: dict[str, Any], user_id: s
     provider_name="google-calendar-provider",
     scopes=["https://www.googleapis.com/auth/calendar"],
     auth_flow="USER_FEDERATION",
-    callback_url="https://bedrock-agentcore.ap-northeast-1.amazonaws.com/identities/oauth2/callback",
     on_auth_url=lambda url: logger.info(f"Authorization required: {url}"),
     force_authentication=False,
 )
