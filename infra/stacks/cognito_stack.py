@@ -6,6 +6,7 @@ LINE User IDをCognito User IDにマッピングして、JWT認証を実現
 
 from aws_cdk import (
     Stack,
+    Duration,
     aws_cognito as cognito,
     RemovalPolicy,
     CfnOutput,
@@ -62,9 +63,9 @@ class CognitoStack(Stack):
                 admin_user_password=True,  # ADMIN_NO_SRP_AUTH有効化
             ),
             # トークン有効期限
-            access_token_validity=cognito.TokenValidity.hours(1),
-            id_token_validity=cognito.TokenValidity.hours(1),
-            refresh_token_validity=cognito.TokenValidity.days(30),
+            access_token_validity=Duration.hours(1),
+            id_token_validity=Duration.hours(1),
+            refresh_token_validity=Duration.days(30),
             # OAuthフローは使用しない（Lambdaから直接認証）
             o_auth=None,
         )
