@@ -21,6 +21,10 @@ class AgentCoreStack(Stack):
         construct_id: str,
         lambda_function_arn: str,
         line_secret: secretsmanager.ISecret,
+        cognito_user_pool_id: str,
+        cognito_app_client_id: str,
+        cognito_discovery_url: str,
+        oauth_callback_url: str | None = None,
         **kwargs,
     ) -> None:
         """
@@ -29,6 +33,10 @@ class AgentCoreStack(Stack):
             construct_id: コンストラクトID
             lambda_function_arn: Calendar操作Lambda関数のARN
             line_secret: LINE認証情報のSecret
+            cognito_user_pool_id: Cognito User Pool ID
+            cognito_app_client_id: Cognito App Client ID
+            cognito_discovery_url: Cognito OIDC Discovery URL
+            oauth_callback_url: OAuth2 Callback URL (optional, defaults to placeholder)
             **kwargs: その他のスタックパラメータ
         """
         super().__init__(scope, construct_id, **kwargs)
@@ -205,8 +213,40 @@ class AgentCoreStack(Stack):
         # TargetはGatewayに依存
         calendar_target.add_dependency(gateway)
 
-        # Note: AgentCore Runtimeの環境変数設定はCDKでサポートされていないため、
-        # agent/server.pyが動的にSecrets ManagerとAPI経由で必要な情報を取得します
+        # AgentCore Runtime作成（JWT認証付き）
+        ecr_repository_name = "line-agent-secretary"
+        ecr_uri = f"{self.account}.dkr.ecr.{self.region}.amazonaws.com/{ecr_repository_name}:latest"
+
+        runtime = bedrockagentcore.CfnRuntime(
+            self,
+            "LineAgentRuntime",
+            agent_runtime_name="line_agent_secretary_jwt",
+            role_arn=runtime_role.role_arn,
+            agent_runtime_artifact=bedrockagentcore.CfnRuntime.AgentRuntimeArtifactProperty(
+                container_configuration=bedrockagentcore.CfnRuntime.ContainerConfigurationProperty(
+                    container_uri=ecr_uri,
+                )
+            ),
+            network_configuration=bedrockagentcore.CfnRuntime.NetworkConfigurationProperty(
+                network_mode="PUBLIC",
+            ),
+            protocol_configuration="HTTP",
+            authorizer_configuration=bedrockagentcore.CfnRuntime.AuthorizerConfigurationProperty(
+                custom_jwt_authorizer=bedrockagentcore.CfnRuntime.CustomJWTAuthorizerConfigurationProperty(
+                    discovery_url=f"{cognito_discovery_url}/.well-known/openid-configuration",
+                    allowed_clients=[cognito_app_client_id],
+                )
+            ),
+            environment_variables={
+                "AWS_REGION": self.region,
+                "GATEWAY_ID": gateway.attr_gateway_identifier,
+                "GATEWAY_URL": gateway.attr_gateway_url,
+                "OAUTH_CALLBACK_URL": oauth_callback_url or "https://placeholder.example.com/oauth2/callback",
+            },
+        )
+
+        # RuntimeはGatewayに依存
+        runtime.add_dependency(gateway)
 
         # 出力
         CfnOutput(
@@ -227,16 +267,18 @@ class AgentCoreStack(Stack):
 
         CfnOutput(
             self,
-            "SetupInstructions",
-            value=(
-                "Manual setup required:\n"
-                "1. Create OAuth2 Credential Provider for Google Calendar\n"
-                "2. Create AgentCore Gateway using the console or AWS CLI\n"
-                "3. Add Lambda target to the Gateway\n"
-                "4. Create and deploy AgentCore Runtime\n"
-                "See requirements.md for detailed instructions"
-            ),
-            description="Post-deployment setup instructions",
+            "RuntimeId",
+            value=runtime.attr_agent_runtime_id,
+            description="AgentCore Runtime ID",
+            export_name=f"{self.stack_name}-RuntimeId",
+        )
+
+        CfnOutput(
+            self,
+            "RuntimeArn",
+            value=runtime.attr_agent_runtime_arn,
+            description="AgentCore Runtime ARN",
+            export_name=f"{self.stack_name}-RuntimeArn",
         )
 
         # Gateway関連の出力
@@ -264,10 +306,11 @@ class AgentCoreStack(Stack):
             export_name=f"{self.stack_name}-CalendarTargetId",
         )
 
-        # IAMロールを他のスタックから参照できるようにする
+        # IAMロールとRuntimeを他のスタックから参照できるようにする
         self.gateway_role = gateway_role
         self.runtime_role = runtime_role
         self.gateway = gateway
+        self.runtime = runtime
 
     def _create_calendar_tool_schemas(self) -> list:
         """

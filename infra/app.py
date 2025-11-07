@@ -12,6 +12,7 @@ from stacks.cognito_stack import CognitoStack
 from stacks.github_oidc_stack import GitHubOIDCStack
 from stacks.lambda_stack import LambdaStack
 from stacks.line_webhook_stack import LineWebhookStack
+from stacks.oauth_session_stack import OAuthSessionStack
 from stacks.secrets_stack import SecretsStack
 
 app = cdk.App()
@@ -36,6 +37,14 @@ cognito_stack = CognitoStack(
     "LineAgentCognitoStack",
     env=env,
     description="Cognito User Pool for JWT authentication",
+)
+
+# OAuth Session テーブルスタック（3-legged OAuth用）
+oauth_session_stack = OAuthSessionStack(
+    app,
+    "LineAgentOAuthSessionStack",
+    env=env,
+    description="DynamoDB table for OAuth session management",
 )
 
 # GitHub OIDCスタック（GitHub ActionsからECRへのデプロイ）
@@ -63,28 +72,33 @@ agentcore_stack = AgentCoreStack(
     "LineAgentAgentCoreStack",
     lambda_function_arn=lambda_stack.calendar_function.function_arn,
     line_secret=secrets_stack.line_secret,
+    cognito_user_pool_id=cognito_stack.user_pool.user_pool_id,
+    cognito_app_client_id=cognito_stack.app_client.user_pool_client_id,
+    cognito_discovery_url=cognito_stack.user_pool.user_pool_provider_url,
     env=env,
-    description="AgentCore Runtime and Gateway configuration",
+    description="AgentCore Runtime and Gateway configuration with JWT authentication",
 )
 
-# LINE WebhookスタックLambda + API Gateway）
-# Runtime IDは既に作成済みのもの: line_agent_secretary-Z8wcZvH0aN
+# LINE Webhookスタック（Lambda + API Gateway）
+# Runtime IDは AgentCore スタックから動的に取得
 line_webhook_stack = LineWebhookStack(
     app,
     "LineAgentWebhookStack",
-    agent_runtime_id="line_agent_secretary-Z8wcZvH0aN",
+    agent_runtime_id=agentcore_stack.runtime.attr_agent_runtime_id,
     line_secret=secrets_stack.line_secret,
     cognito_user_pool_id=cognito_stack.user_pool.user_pool_id,
     cognito_app_client_id=cognito_stack.app_client.user_pool_client_id,
+    oauth_session_table=oauth_session_stack.session_table,
     env=env,
-    description="LINE Webhook handler with API Gateway",
+    description="LINE Webhook handler with API Gateway and JWT authentication",
 )
 
 # スタック間の依存関係を設定
 agentcore_stack.add_dependency(lambda_stack)
 agentcore_stack.add_dependency(secrets_stack)
+agentcore_stack.add_dependency(cognito_stack)
 line_webhook_stack.add_dependency(agentcore_stack)
-line_webhook_stack.add_dependency(cognito_stack)
+line_webhook_stack.add_dependency(oauth_session_stack)
 
 # タグを追加（コスト管理用）
 cdk.Tags.of(app).add("Project", "LineAgentSecretary")

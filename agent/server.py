@@ -19,6 +19,9 @@ from bedrock_agentcore.identity.auth import requires_access_token
 # Context variable for user_id (for AgentCore Identity SDK)
 current_user_id: contextvars.ContextVar[str] = contextvars.ContextVar('current_user_id', default='default-user')
 
+# グローバル変数：認証URL格納用
+auth_url_storage: list[str] = []
+
 # ログ設定 - 標準出力に明示的に出力
 logging.basicConfig(
     level=logging.INFO,
@@ -292,12 +295,24 @@ def execute_calendar_tool(tool_name: str, tool_input: dict[str, Any], user_id: s
         return {"success": False, "error": str(e)}
 
 
+def on_auth_url_handler(url: str) -> None:
+    """
+    認証URLを受け取ったときのコールバック
+
+    Args:
+        url: OAuth 認証URL
+    """
+    logger.warning(f"⚠️  Google Calendar authorization required. URL: {url}")
+    # グローバル変数に保存（後でLINEに送信するため）
+    auth_url_storage.append(url)
+
+
 @requires_access_token(
     provider_name="google-calendar-provider",
     scopes=["https://www.googleapis.com/auth/calendar"],
     auth_flow="USER_FEDERATION",
-    callback_url="https://bedrock-agentcore.ap-northeast-1.amazonaws.com/identities/oauth2/callback",
-    on_auth_url=lambda url: logger.warning(f"⚠️  Google Calendar authorization required. Please complete at: {url}"),
+    callback_url=os.environ.get("OAUTH_CALLBACK_URL", "http://localhost:9090/oauth2/callback"),
+    on_auth_url=on_auth_url_handler,
     force_authentication=False,
 )
 async def execute_calendar_tool_with_oauth(
@@ -468,7 +483,12 @@ async def agent_invocation(payload: dict[str, Any], context: RequestContext) -> 
     Returns:
         エージェントの応答
     """
+    global auth_url_storage
+
     try:
+        # 認証URL格納をクリア
+        auth_url_storage.clear()
+
         # ペイロードからpromptを取得
         user_message = payload.get("prompt", "")
         user_id = payload.get("user_id", "default-user")
@@ -480,12 +500,21 @@ async def agent_invocation(payload: dict[str, Any], context: RequestContext) -> 
             logger.info(f"Request headers: {context.request_headers}")
 
         # Set user_id in context for AgentCore Identity SDK
-        # 全ユーザーで同じGoogleアカウントを共有するため、固定のuser_idを使用
-        shared_user_id = "shared-calendar-user"
-        current_user_id.set(shared_user_id)
+        # LINE user_id を使用（各ユーザーが個別のGoogleアカウントと連携）
+        current_user_id.set(user_id)
 
         # Bedrockを使ってAI応答を生成
         agent_response = await generate_ai_response(user_message, user_id=user_id)
+
+        # 認証URLが生成された場合、応答に含める
+        if auth_url_storage:
+            auth_url = auth_url_storage[0]
+            logger.info(f"Authentication URL generated: {auth_url}")
+            # 認証URLを応答に含める（LINE webhookで検出される）
+            return {
+                "response": f"Authorization URL: {auth_url}",
+                "metadata": {"user_id": user_id, "auth_required": True}
+            }
 
         return {
             "response": agent_response,

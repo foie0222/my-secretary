@@ -7,6 +7,7 @@ LINEからのWebhookを受け取り、AgentCore Runtimeを呼び出して応答�
 import json
 import logging
 import os
+import urllib.parse
 from typing import Any
 
 import boto3
@@ -34,6 +35,7 @@ CHANNEL_ACCESS_TOKEN = os.environ["LINE_CHANNEL_ACCESS_TOKEN"]
 CHANNEL_SECRET = os.environ["LINE_CHANNEL_SECRET"]
 AGENT_RUNTIME_ARN = os.environ["AGENT_RUNTIME_ARN"]
 AWS_REGION = os.environ.get("AWS_REGION", "ap-northeast-1")
+OAUTH_SESSION_TABLE_NAME = os.environ.get("OAUTH_SESSION_TABLE_NAME", "line-agent-oauth-sessions")
 
 # LINE Bot API初期化
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
@@ -41,6 +43,10 @@ handler = WebhookHandler(CHANNEL_SECRET)
 
 # Bedrock AgentCore Runtime client
 bedrock_client = boto3.client("bedrock-agentcore", region_name=AWS_REGION)
+
+# DynamoDB client
+dynamodb = boto3.resource("dynamodb")
+session_table = dynamodb.Table(OAUTH_SESSION_TABLE_NAME)
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
@@ -113,9 +119,102 @@ def handle_text_message(event: MessageEvent) -> None:
             )
 
 
+def store_oauth_session(session_id: str, line_user_id: str, cognito_token: str) -> None:
+    """
+    OAuth セッション情報を DynamoDB に保存
+
+    Args:
+        session_id: OAuth セッションID（認証URLから抽出）
+        line_user_id: LINE User ID
+        cognito_token: Cognito JWT access token
+    """
+    import time
+
+    try:
+        session_table.put_item(
+            Item={
+                "session_id": session_id,
+                "line_user_id": line_user_id,
+                "cognito_token": cognito_token,
+                "ttl": int(time.time()) + 600,  # 10分後に自動削除
+            }
+        )
+        logger.info(f"Stored OAuth session: session_id={session_id}, line_user_id={line_user_id}")
+    except Exception as e:
+        logger.error(f"Failed to store OAuth session: {e}", exc_info=True)
+        raise
+
+
+def extract_auth_url(response_text: str) -> str | None:
+    """
+    AgentCore Runtime の応答から認証URLを抽出
+
+    Args:
+        response_text: Runtime からの応答テキスト
+
+    Returns:
+        認証URL（見つからない場合はNone）
+    """
+    import re
+
+    # パターン1: "Authorization URL: https://..."
+    match = re.search(r"Authorization URL:\s*(https?://[^\s]+)", response_text)
+    if match:
+        return match.group(1)
+
+    # パターン2: "認証してください: https://..."
+    match = re.search(r"認証してください[：:]\s*(https?://[^\s]+)", response_text)
+    if match:
+        return match.group(1)
+
+    # パターン3: URLのみ（https://accounts.google.com/... など）
+    match = re.search(r"(https://accounts\.google\.com/[^\s]+)", response_text)
+    if match:
+        return match.group(1)
+
+    return None
+
+
+def extract_session_id_from_url(auth_url: str) -> str | None:
+    """
+    認証URLからsession_idを抽出
+
+    Args:
+        auth_url: 認証URL
+
+    Returns:
+        session_id（見つからない場合はNone）
+    """
+    import re
+    from urllib.parse import parse_qs, urlparse
+
+    # URLをパースしてクエリパラメータを取得
+    parsed = urlparse(auth_url)
+    query_params = parse_qs(parsed.query)
+
+    # state パラメータから session_id を抽出
+    if "state" in query_params:
+        state = query_params["state"][0]
+        # state 内の session_id を抽出（形式: session_id=xxx）
+        match = re.search(r"session_id=([^&]+)", state)
+        if match:
+            return match.group(1)
+
+    # redirect_uri パラメータから session_id を抽出
+    if "redirect_uri" in query_params:
+        redirect_uri = query_params["redirect_uri"][0]
+        # redirect_uri に session_id が含まれている場合
+        match = re.search(r"session_id=([^&]+)", redirect_uri)
+        if match:
+            return match.group(1)
+
+    logger.warning(f"Failed to extract session_id from auth URL: {auth_url}")
+    return None
+
+
 def invoke_agent_runtime(input_text: str, user_id: str) -> str:
     """
-    AgentCore Runtimeを呼び出す（JWT認証）
+    AgentCore Runtimeを呼び出す（JWT認証 + OAuth対応）
 
     Args:
         input_text: ユーザーからの入力テキスト
@@ -127,13 +226,16 @@ def invoke_agent_runtime(input_text: str, user_id: str) -> str:
     try:
         logger.info(f"Getting JWT token for LINE user: {user_id}")
 
-        # Cognito JWTトークンを取得
+        # Cognito JWTトークンを取得（ユーザーが存在しない場合は自動作成）
         jwt_token = get_jwt_token_simple(user_id)
 
         logger.info("JWT token retrieved successfully")
 
-        # Runtime URLを構築
-        runtime_url = f"https://{AGENT_RUNTIME_ARN.split('/')[-1]}.runtime.bedrock-agentcore.{AWS_REGION}.amazonaws.com/invocations"
+        # Runtime ARNをURLエンコード
+        escaped_agent_arn = urllib.parse.quote(AGENT_RUNTIME_ARN, safe='')
+
+        # Runtime URLを構築（JWT認証の場合の正しい形式）
+        runtime_url = f"https://bedrock-agentcore.{AWS_REGION}.amazonaws.com/runtimes/{escaped_agent_arn}/invocations?qualifier=DEFAULT"
 
         # ペイロードを準備
         payload = {"prompt": input_text}
@@ -142,6 +244,7 @@ def invoke_agent_runtime(input_text: str, user_id: str) -> str:
         headers = {
             "Authorization": f"Bearer {jwt_token}",
             "Content-Type": "application/json",
+            "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id": f"line-session-{user_id}",
         }
 
         logger.info(f"Invoking Runtime with JWT auth: {runtime_url}")
@@ -164,6 +267,28 @@ def invoke_agent_runtime(input_text: str, user_id: str) -> str:
         agent_response = result.get("response", "申し訳ございません。応答を生成できませんでした。")
 
         logger.info("Successfully received response from Runtime")
+
+        # 認証URLが含まれているか確認
+        auth_url = extract_auth_url(agent_response)
+        if auth_url:
+            logger.info(f"Authentication required. Auth URL: {auth_url}")
+
+            # session_idを抽出
+            session_id = extract_session_id_from_url(auth_url)
+            if session_id:
+                # OAuth セッション情報を DynamoDB に保存
+                store_oauth_session(session_id, user_id, jwt_token)
+                logger.info(f"OAuth session stored for session_id: {session_id}")
+            else:
+                logger.warning("Failed to extract session_id from auth URL")
+
+            # 認証URLをユーザーフレンドリーなメッセージに変換
+            return (
+                f"Google Calendar との連携が必要です。\n\n"
+                f"以下のリンクをタップして認証を完了してください：\n{auth_url}\n\n"
+                f"認証完了後、LINEに戻って再度お試しください。"
+            )
+
         return agent_response
 
     except requests.exceptions.Timeout:
